@@ -1,0 +1,30 @@
+<?xml version='1.0' ?>
+
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="ignition_version" default="6"/>
+
+  <!-- Common launch -->
+  <include file="$(find-pkg-share rmf_demos)/common.launch.xml">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="viz_config_file" value ="$(find-pkg-share my_office_pkg)/rviz/my_office.rviz"/>
+    <arg name="config_file" value="$(find-pkg-share my_office_pkg)/maps/my_office/my_office.building.yaml"/>
+  </include>
+
+  <!-- TinyRobot fleet adapter -->
+  <group>
+    <include file="$(find-pkg-share rmf_demos_fleet_adapter)/launch/fleet_adapter.launch.xml">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="nav_graph_file" value="$(find-pkg-share my_office_pkg)/maps/my_office/nav_graphs/0.yaml" />
+      <arg name="config_file" value="$(find-pkg-share my_office_pkg)/config/tinyRobot_config.yaml"/>
+    </include>
+  </group>
+
+  <!-- Simulation launch -->
+  <include file="$(find-pkg-share rmf_demos_gz)/simulation.launch.xml">
+    <arg name="map_package" value="my_office_pkg"/>
+    <arg name="map_name" value="my_office"/>
+    <arg name="ignition_version" value="$(var ignition_version)"/>
+  </include>
+
+</launch>

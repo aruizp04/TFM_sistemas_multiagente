@@ -1,0 +1,43 @@
+<launch>
+  <arg name="use_sim_time" default="true"/>
+
+  <!-- Common launch -->
+  <include file="$(find-pkg-share rmf_demos)/common.launch.xml">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="viz_config_file" value ="$(find-pkg-share my_world)/rviz/my_world.rviz"/>
+    <arg name="config_file" value="$(find-pkg-share my_world)/maps/my_world/my_world.building.yaml"/>
+  </include>
+
+
+  <!-- Mundo RMF -->
+  <include file="$(find-pkg-share rmf_demos_gz)/simulation.launch.xml">
+    <arg name="map_package" value="my_world"/>
+    <arg name="map_name" value="my_world"/>
+    <arg name="headless" value="false"/>
+  </include>
+
+  <!-- Spawn del TurtleBot4 -->
+  <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
+    <arg name="model" value="lite"/>
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="rviz" value="false"/>
+    <arg name="slam" value="false"/>
+    <arg name="localization" value="false"/>
+    <arg name="nav2" value="false"/>
+    <arg name="x" value="46.19"/>
+    <arg name="y" value="-19.95"/>
+    <arg name="z" value="0.2"/>
+    <arg name="yaw" value="1.52"/>
+  </include>
+
+  <!-- Localización con mapa -->
+  <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
+  </include>
+
+  <!-- Nav2 -->
+  <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+  </include>
+</launch>
