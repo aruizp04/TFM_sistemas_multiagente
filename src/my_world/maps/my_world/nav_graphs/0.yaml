@@ -69,6 +69,12 @@ levels:
     - - 15
       - 5
       - {}
+    - - 0
+      - 16
+      - {}
+    - - 16
+      - 0
+      - {}
     vertices:
     - - 2.472591566019222
       - -6.965403684219998
@@ -119,6 +125,10 @@ levels:
       - -19.990319098667428
       - {is_charger: true, is_holding_point: true, is_parking_spot: true, name: turtlebot1_charger,
         spawn_robot_name: turtlebot1}
+    - - 2.477641242455739
+      - -2.5806346430421225
+      - {is_charger: true, is_holding_point: true, is_parking_spot: true, name: tinyRobot1_charger,
+        spawn_robot_name: tinyRobot1, spawn_robot_type: TinyRobot}
 lifts:
   '':
     dims: [1.0, 1.0]

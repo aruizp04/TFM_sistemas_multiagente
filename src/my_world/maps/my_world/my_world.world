@@ -240,12 +240,18 @@
       <direction>-0.5 0.1 -0.9</direction>
     </light>
     <include>
+      <name>tinyRobot1</name>
+      <uri>model://TinyRobot</uri>
+      <pose>2.477641242455739 -2.5806346430421225 0.0 0 0 1.5696446870718745</pose>
+    </include>
+    <include>
       <name>my_world_L1</name>
       <uri>model://my_world_L1</uri>
       <pose>0 0 0.0 0 0 0</pose>
     </include>
     <rmf_charger_waypoints name="charger_waypoints">
       <rmf_vertex name="turtlebot1_charger" x="46.20318948062646" y="-19.990319098667428" level="L1" />
+      <rmf_vertex name="tinyRobot1_charger" x="2.477641242455739" y="-2.5806346430421225" level="L1" />
     </rmf_charger_waypoints>
   </world>
 </sdf>
