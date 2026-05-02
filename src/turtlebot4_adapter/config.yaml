@@ -63,6 +63,8 @@ fleet_manager:
 # Mas adelante, si el adaptador necesita transformar entre coordenadas de mapa ROS y RMF,
 # se rellenara esta seccion con puntos equivalentes.
 
+navigation_backend: nav2
+
 reference_coordinates:
   L1:
     rmf:

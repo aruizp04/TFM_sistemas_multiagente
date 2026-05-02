@@ -22,7 +22,8 @@ class RobotAPI:
     API minima para conectar RMF con un TurtleBot4 simulado.
 
     - Posicion: /amcl_pose
-    - Navegacion: /navigate_to_pose
+    - Navegacion Nav2: /navigate_to_pose
+    - Navegacion EasyNav: pendiente de implementar
     - Stop: /cmd_vel
     - Bateria: /battery_state
     """
@@ -37,6 +38,12 @@ class RobotAPI:
 
         self.map_name = 'L1'
 
+        # Selector de backend de navegacion.
+        # Valores esperados:
+        #   - nav2
+        #   - easynav
+        self.navigation_backend = config_yaml.get('navigation_backend', 'nav2')
+
         self._pose = None
         self._battery_soc = 1.0
 
@@ -48,6 +55,10 @@ class RobotAPI:
             rclpy.init(args=None)
 
         self.node = rclpy.create_node('turtlebot4_robot_api')
+
+        self.node.get_logger().info(
+            f'Navigation backend selected: {self.navigation_backend}'
+        )
 
         self.pose_sub = self.node.create_subscription(
             PoseWithCovarianceStamped,
@@ -69,11 +80,19 @@ class RobotAPI:
             10
         )
 
-        self.nav_to_pose_client = ActionClient(
-            self.node,
-            NavigateToPose,
-            '/navigate_to_pose'
-        )
+        # Cliente de Nav2.
+        # Se mantiene igual que en tu implementacion actual.
+        self.nav_to_pose_client = None
+        if self.navigation_backend == 'nav2':
+            self.nav_to_pose_client = ActionClient(
+                self.node,
+                NavigateToPose,
+                '/navigate_to_pose'
+            )
+
+        # Aqui se podran declarar publishers, services o action clients de EasyNav
+        # cuando se decida cual es su interfaz real.
+        self.easynav_client = None
 
         self.executor = SingleThreadedExecutor()
         self.executor.add_node(self.node)
@@ -151,13 +170,59 @@ class RobotAPI:
 
     def navigate(self, robot_name: str, pose, map_name: str, speed_limit=0.0):
         """
-        Envia un objetivo a Nav2.
+        Punto unico de entrada para navegacion desde RMF.
 
-        pose llega como [x, y, theta].
+        Dependiendo de navigation_backend, redirige la orden a:
+        - Nav2
+        - EasyNav
+        """
+        if self.navigation_backend == 'nav2':
+            return self._navigate_with_nav2(
+                robot_name,
+                pose,
+                map_name,
+                speed_limit
+            )
+
+        if self.navigation_backend == 'easynav':
+            return self._navigate_with_easynav(
+                robot_name,
+                pose,
+                map_name,
+                speed_limit
+            )
+
+        self.node.get_logger().error(
+            f'Unknown navigation backend: {self.navigation_backend}'
+        )
+        return False
+
+    def _navigate_with_nav2(
+        self,
+        robot_name: str,
+        pose,
+        map_name: str,
+        speed_limit=0.0
+    ):
+        """
+        Nav2.
+
+        Se mantiene igual que tu navigate() original:
+        - Usa /navigate_to_pose
+        - Envia NavigateToPose.Goal
+        - Usa callbacks de goal/result
         """
         try:
+            if self.nav_to_pose_client is None:
+                self.node.get_logger().error(
+                    'Nav2 backend selected but nav_to_pose_client is not initialized'
+                )
+                return False
+
             if not self.nav_to_pose_client.wait_for_server(timeout_sec=2.0):
-                self.node.get_logger().error('Nav2 action server /navigate_to_pose not available')
+                self.node.get_logger().error(
+                    'Nav2 action server /navigate_to_pose not available'
+                )
                 return False
 
             goal_msg = NavigateToPose.Goal()
@@ -181,14 +246,32 @@ class RobotAPI:
             send_goal_future.add_done_callback(self._goal_response_callback)
 
             self.node.get_logger().info(
-                f'Navigation goal sent to [{robot_name}]: {pose}'
+                f'[NAV2] Navigation goal sent to [{robot_name}]: {pose}'
             )
             return True
 
         except Exception as e:
-            self.node.get_logger().error(f'navigate() failed: {e}')
+            self.node.get_logger().error(f'_navigate_with_nav2() failed: {e}')
             self._command_completed = True
             return False
+
+    def _navigate_with_easynav(
+        self,
+        robot_name: str,
+        pose,
+        map_name: str,
+        speed_limit=0.0
+    ):
+        """
+        EASYNAV
+        """
+        self.node.get_logger().warn(
+            f'[EASYNAV] Navigation requested for [{robot_name}] '
+            f'to pose {pose} on map [{map_name}], but EasyNav is not implemented yet'
+        )
+
+        self._command_completed = True
+        return False
 
     def _goal_response_callback(self, future):
         try:
@@ -227,6 +310,8 @@ class RobotAPI:
     def stop(self, robot_name: str):
         """
         Publica velocidad cero.
+
+        De momento se mantiene comun para Nav2 y EasyNav.
         """
         try:
             msg = TwistStamped()
@@ -253,6 +338,7 @@ class RobotAPI:
     def position(self, robot_name: str):
         """
         Devuelve [x, y, theta] en el sistema de coordenadas del robot/Nav2.
+
         La transformacion a coordenadas RMF se define en config.yaml mediante
         reference_coordinates.
         """
