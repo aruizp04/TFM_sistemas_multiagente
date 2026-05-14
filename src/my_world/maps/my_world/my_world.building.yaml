@@ -16,6 +16,10 @@ graphs:
   {}
 levels:
   L1:
+    doors:
+      - [21, 20, {motion_axis: [1, start], motion_degrees: [3, 90], motion_direction: [2, 1], name: [1, door_2], plugin: [1, normal], right_left_ratio: [3, 1], type: [1, hinged]}]
+      - [14, 17, {motion_axis: [1, start], motion_degrees: [3, 90], motion_direction: [2, 1], name: [1, door_1], plugin: [1, normal], right_left_ratio: [3, 1], type: [1, hinged]}]
+      - [27, 22, {motion_axis: [1, start], motion_degrees: [3, 90], motion_direction: [2, 1], name: [1, door_3], plugin: [1, normal], right_left_ratio: [3, 1], type: [1, hinged]}]
     drawing:
       filename: plano_my_office.png
     elevation: 0
