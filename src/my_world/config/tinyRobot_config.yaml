@@ -42,10 +42,8 @@ rmf_fleet:
 
   robots:
     tinyRobot1:
-      charger: "room5_1"
+      charger: "tinyRobot1_charger"
       responsive_wait: false
-    tinyRobot2:
-      charger: "room2_2"
 
 fleet_manager:
   ip: "127.0.0.1"

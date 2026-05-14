@@ -8,6 +8,31 @@
     <arg name="config_file" value="$(find-pkg-share my_world)/maps/my_world/my_world.building.yaml"/>
   </include>
 
+  <!-- TinyRobot fleet adapter. It publishes tinyRobot1 to RMF/RViz. -->
+  <include file="$(find-pkg-share rmf_demos_fleet_adapter)/launch/fleet_adapter.launch.xml">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="nav_graph_file" value="$(find-pkg-share my_world)/maps/my_world/nav_graphs/0.yaml"/>
+    <arg name="config_file" value="$(find-pkg-share my_world)/config/tinyRobot_config.yaml"/>
+  </include>
+
+  <!-- TurtleBot4 RMF adapter. It connects the spawned TurtleBot to RMF/RViz. -->
+  <group if="$(var use_sim_time)">
+    <node pkg="turtlebot4_adapter"
+          exec="fleet_adapter"
+          args="-c $(find-pkg-share turtlebot4_adapter)/config.yaml -n $(find-pkg-share my_world)/maps/my_world/nav_graphs/0.yaml -sim"
+          output="both">
+      <param name="use_sim_time" value="$(var use_sim_time)"/>
+    </node>
+  </group>
+
+  <group unless="$(var use_sim_time)">
+    <node pkg="turtlebot4_adapter"
+          exec="fleet_adapter"
+          args="-c $(find-pkg-share turtlebot4_adapter)/config.yaml -n $(find-pkg-share my_world)/maps/my_world/nav_graphs/0.yaml"
+          output="both">
+      <param name="use_sim_time" value="$(var use_sim_time)"/>
+    </node>
+  </group>
 
   <!-- Mundo RMF -->
   <include file="$(find-pkg-share rmf_demos_gz)/simulation.launch.xml">
