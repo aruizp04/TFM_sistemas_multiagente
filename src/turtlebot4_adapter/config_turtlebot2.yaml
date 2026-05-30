@@ -2,13 +2,13 @@
 # RMF Fleet parameters
 
 rmf_fleet:
-  name: "turtlebot1"
+  name: "turtlebot2"
   limits:
-    linear: [0.31, 0.75]      # velocity, acceleration
-    angular: [1.90, 2.0]      # velocity, acceleration
+    linear: [0.31, 0.75]
+    angular: [1.90, 2.0]
 
   profile:
-    footprint: 0.22           # TurtleBot4 aproximado como circulo
+    footprint: 0.22
     vicinity: 0.50
 
   reversible: True
@@ -45,8 +45,8 @@ rmf_fleet:
   responsive_wait: True
 
   robots:
-    turtlebot1:
-      charger: "turtlebot1_charger"
+    turtlebot2:
+      charger: "turtlebot2_charger"
       responsive_wait: False
 
   robot_state_update_frequency: 10.0
@@ -56,7 +56,8 @@ fleet_manager:
   prefix: "http://127.0.0.1:8080"
   user: "some_user"
   password: "some_password"
-  namespace: "turtlebot1"
+  namespace: "turtlebot2"
+  navigation_backend: nav2
   initial_pose_source: "world_charger"
   initial_pose_world_package: "my_world"
   initial_pose_world_name: "my_world"
@@ -66,21 +67,18 @@ fleet_manager:
 
 
 # TRANSFORM CONFIG =============================================================
-# Para empezar, lo dejamos sin transformar hasta comprobar como reporta la posicion el robot.
-# Mas adelante, si el adaptador necesita transformar entre coordenadas de mapa ROS y RMF,
-# se rellenara esta seccion con puntos equivalentes.
 
 navigation_backend: nav2
 
 reference_coordinates:
   L1:
     rmf:
-      - [46.203, -19.990]   # turtlebot1_charger
+      - [46.749, -3.719]    # turtlebot2_charger
+      - [2.473, -6.965]     # room5_2
       - [8.965, -7.072]     # hall_1
       - [21.099, -3.400]    # room1_1
-      - [20.620, -20.323]   # room3_2
     robot:
-      - [46.203, -19.990]   # turtlebot1_charger
+      - [46.749, -3.719]    # turtlebot2_charger
+      - [2.473, -6.965]     # room5_2
       - [8.965, -7.072]     # hall_1
       - [21.099, -3.400]    # room1_1
-      - [20.620, -20.323]   # room3_2
