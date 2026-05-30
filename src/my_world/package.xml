@@ -10,6 +10,7 @@
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <exec_depend>rmf_demos</exec_depend>
   <exec_depend>rmf_demos_gz</exec_depend>
@@ -23,7 +24,14 @@
   <exec_depend>turtlebot4_adapter</exec_depend>
   <exec_depend>rmf_demos_fleet_adapter</exec_depend>
   <exec_depend>irobot_create_description</exec_depend>
+  <exec_depend>irobot_create_control</exec_depend>
   <exec_depend>irobot_create_gz_bringup</exec_depend>
+  <exec_depend>irobot_create_nodes</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
 
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>rviz2</exec_depend>

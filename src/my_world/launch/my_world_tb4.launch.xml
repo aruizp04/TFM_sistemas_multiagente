@@ -22,8 +22,11 @@
     <arg name="headless" value="false"/>
   </include>
 
-  <!-- Spawn del TurtleBot4 -->
+  <!-- Spawn del primer TurtleBot4 -->
   <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
+    <arg name="namespace" value="turtlebot1"/>
+    <arg name="robot_name" value="turtlebot1"/>
+    <arg name="dock_name" value="turtlebot1_standard_dock"/>
     <arg name="model" value="lite"/>
     <arg name="use_sim_time" value="$(var use_sim_time)"/>
     <arg name="rviz" value="false"/>
@@ -36,14 +39,49 @@
     <arg name="yaw" value="1.52"/>
   </include>
 
-  <!-- Localización con mapa -->
-  <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
+  <!-- Spawn del segundo TurtleBot4 -->
+  <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
+    <arg name="namespace" value="turtlebot2"/>
+    <arg name="robot_name" value="turtlebot2"/>
+    <arg name="dock_name" value="turtlebot2_standard_dock"/>
+    <arg name="model" value="lite"/>
     <arg name="use_sim_time" value="$(var use_sim_time)"/>
-    <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
+    <arg name="rviz" value="false"/>
+    <arg name="slam" value="false"/>
+    <arg name="localization" value="false"/>
+    <arg name="nav2" value="false"/>
+    <arg name="x" value="46.75"/>
+    <arg name="y" value="-3.72"/>
+    <arg name="z" value="0.2"/>
+    <arg name="yaw" value="1.52"/>
   </include>
 
-  <!-- Nav2 -->
-  <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
-    <arg name="use_sim_time" value="$(var use_sim_time)"/>
-  </include>
+  <!-- Localización/Nav2 se retrasan para que ros2_control publique odometría. -->
+  <timer period="12.0">
+    <!-- Localización con mapa del primer TurtleBot4 -->
+    <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
+      <arg name="namespace" value="turtlebot1"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
+    </include>
+
+    <!-- Nav2 del primer TurtleBot4 -->
+    <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
+      <arg name="namespace" value="turtlebot1"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    </include>
+
+    <!-- Localización con mapa del segundo TurtleBot4 -->
+    <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
+      <arg name="namespace" value="turtlebot2"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
+    </include>
+
+    <!-- Nav2 del segundo TurtleBot4 -->
+    <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
+      <arg name="namespace" value="turtlebot2"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    </include>
+  </timer>
 </launch>

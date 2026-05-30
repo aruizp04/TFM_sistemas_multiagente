@@ -17,14 +17,18 @@
 
 from ament_index_python.packages import get_package_share_directory
 
-from irobot_create_common_bringup.namespace import GetNamespacedName
-from irobot_create_common_bringup.offset import OffsetParser, RotationalOffsetX, RotationalOffsetY
+from irobot_create_common_bringup.offset import OffsetParser
+from irobot_create_common_bringup.offset import RotationalOffsetX
+from irobot_create_common_bringup.offset import RotationalOffsetY
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration
+from launch.substitutions import NotEqualsSubstitution
+from launch.substitutions import PathJoinSubstitution
 
 from launch_ros.actions import Node, PushRosNamespace
 
@@ -41,6 +45,10 @@ ARGUMENTS = [
                           description='Turtlebot4 Model'),
     DeclareLaunchArgument('namespace', default_value='',
                           description='Robot namespace'),
+    DeclareLaunchArgument('robot_name', default_value='turtlebot4',
+                          description='Gazebo model name for the TurtleBot4'),
+    DeclareLaunchArgument('dock_name', default_value='standard_dock',
+                          description='Gazebo model name for the dock'),
     DeclareLaunchArgument('localization', default_value='false',
                           choices=['true', 'false'],
                           description='Whether to launch localization'),
@@ -53,8 +61,13 @@ ARGUMENTS = [
 ]
 
 for pose_element in ['x', 'y', 'z', 'yaw']:
-    ARGUMENTS.append(DeclareLaunchArgument(pose_element, default_value='0.0',
-                     description=f'{pose_element} component of the robot pose.'))
+    ARGUMENTS.append(
+        DeclareLaunchArgument(
+            pose_element,
+            default_value='0.0',
+            description=f'{pose_element} component of the robot pose.'
+        )
+    )
 
 
 def generate_launch_description():
@@ -64,8 +77,6 @@ def generate_launch_description():
         'my_world')
     pkg_turtlebot4_gz_bringup = get_package_share_directory(
         'turtlebot4_gz_bringup')
-    pkg_turtlebot4_description = get_package_share_directory(
-        'turtlebot4_description')
     pkg_turtlebot4_viz = get_package_share_directory(
         'turtlebot4_viz')
     pkg_turtlebot4_navigation = get_package_share_directory(
@@ -74,6 +85,8 @@ def generate_launch_description():
         'irobot_create_common_bringup')
     pkg_irobot_create_gz_bringup = get_package_share_directory(
         'irobot_create_gz_bringup')
+    pkg_irobot_create_control = get_package_share_directory(
+        'irobot_create_control')
 
     # Paths
     turtlebot4_ros_gz_bridge_launch = PathJoinSubstitution(
@@ -82,20 +95,64 @@ def generate_launch_description():
         [pkg_turtlebot4_viz, 'launch', 'view_navigation.launch.py'])
     turtlebot4_node_launch = PathJoinSubstitution(
         [pkg_turtlebot4_gz_bringup, 'launch', 'turtlebot4_nodes.launch.py'])
-    create3_nodes_launch = PathJoinSubstitution(
-        [pkg_irobot_create_common_bringup, 'launch', 'create3_nodes.launch.py'])
     create3_gz_nodes_launch = PathJoinSubstitution(
         [pkg_irobot_create_gz_bringup, 'launch', 'create3_gz_nodes.launch.py'])
     robot_description_launch = PathJoinSubstitution(
-        [pkg_turtlebot4_description, 'launch', 'robot_description.launch.py'])
+        [pkg_my_world, 'launch', 'robot_description_world_sensors.launch.py'])
     dock_description_launch = PathJoinSubstitution(
-        [pkg_irobot_create_common_bringup, 'launch', 'dock_description.launch.py'])
+        [
+            pkg_irobot_create_common_bringup,
+            'launch',
+            'dock_description.launch.py'
+        ]
+    )
     localization_launch = PathJoinSubstitution(
         [pkg_turtlebot4_navigation, 'launch', 'localization.launch.py'])
     slam_launch = PathJoinSubstitution(
         [pkg_turtlebot4_navigation, 'launch', 'slam.launch.py'])
     nav2_launch = PathJoinSubstitution(
         [pkg_turtlebot4_navigation, 'launch', 'nav2.launch.py'])
+    control_params_file = PathJoinSubstitution(
+        [pkg_irobot_create_control, 'config', 'control.yaml'])
+    hazards_params_yaml_file = PathJoinSubstitution(
+        [
+            pkg_irobot_create_common_bringup,
+            'config',
+            'hazard_vector_params.yaml'
+        ]
+    )
+    ir_intensity_params_yaml_file = PathJoinSubstitution(
+        [
+            pkg_irobot_create_common_bringup,
+            'config',
+            'ir_intensity_vector_params.yaml'
+        ]
+    )
+    wheel_status_params_yaml_file = PathJoinSubstitution(
+        [
+            pkg_irobot_create_common_bringup,
+            'config',
+            'wheel_status_params.yaml'
+        ]
+    )
+    mock_params_yaml_file = PathJoinSubstitution(
+        [pkg_irobot_create_common_bringup, 'config', 'mock_params.yaml'])
+    robot_state_yaml_file = PathJoinSubstitution(
+        [
+            pkg_irobot_create_common_bringup,
+            'config',
+            'robot_state_params.yaml'
+        ]
+    )
+    kidnap_estimator_yaml_file = PathJoinSubstitution(
+        [
+            pkg_irobot_create_common_bringup,
+            'config',
+            'kidnap_estimator_params.yaml'
+        ]
+    )
+    ui_mgr_params_yaml_file = PathJoinSubstitution(
+        [pkg_irobot_create_common_bringup, 'config', 'ui_mgr_params.yaml'])
 
     # Parameters
     param_file_cmd = DeclareLaunchArgument(
@@ -107,12 +164,14 @@ def generate_launch_description():
     # Launch configurations
     namespace = LaunchConfiguration('namespace')
     use_sim_time = LaunchConfiguration('use_sim_time')
-    x, y, z = LaunchConfiguration('x'), LaunchConfiguration('y'), LaunchConfiguration('z')
+    x = LaunchConfiguration('x')
+    y = LaunchConfiguration('y')
+    z = LaunchConfiguration('z')
     yaw = LaunchConfiguration('yaw')
     turtlebot4_node_yaml_file = LaunchConfiguration('param_file')
 
-    robot_name = GetNamespacedName(namespace, 'turtlebot4')
-    dock_name = GetNamespacedName(namespace, 'standard_dock')
+    robot_name = LaunchConfiguration('robot_name')
+    dock_name = LaunchConfiguration('dock_name')
 
     # Calculate dock offset due to yaw rotation
     dock_offset_x = RotationalOffsetX(0.157, yaw)
@@ -126,14 +185,48 @@ def generate_launch_description():
     # Rotate dock towards robot
     yaw_dock = OffsetParser(yaw, 3.1416)
 
+    joint_state_broadcaster_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'joint_state_broadcaster',
+            '-c', ['/', namespace, '/controller_manager'],
+            '--controller-manager-timeout', '30',
+            '--switch-timeout', '30',
+        ],
+        output='screen',
+    )
+
+    diffdrive_controller_spawner = TimerAction(
+        period=3.0,
+        actions=[
+            Node(
+                package='controller_manager',
+                executable='spawner',
+                arguments=[
+                    'diffdrive_controller',
+                    '-c', ['/', namespace, '/controller_manager'],
+                    '-p', control_params_file,
+                    '--controller-manager-timeout', '30',
+                    '--switch-timeout', '30',
+                ],
+                output='screen',
+            )
+        ]
+    )
+
     spawn_robot_group_action = GroupAction([
         PushRosNamespace(namespace),
 
         # Robot description
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([robot_description_launch]),
-            launch_arguments=[('model', LaunchConfiguration('model')),
-                              ('use_sim_time', LaunchConfiguration('use_sim_time'))]
+            launch_arguments=[
+                ('model', LaunchConfiguration('model')),
+                ('use_sim_time', LaunchConfiguration('use_sim_time')),
+                ('robot_name', robot_name),
+                ('namespace', namespace)
+            ]
         ),
 
         # Dock description
@@ -186,12 +279,116 @@ def generate_launch_description():
                               ('param_file', turtlebot4_node_yaml_file)]
         ),
 
-        # Create 3 nodes
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([create3_nodes_launch]),
-            launch_arguments=[
-                ('namespace', namespace)
+        joint_state_broadcaster_spawner,
+        diffdrive_controller_spawner,
+
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='tf_namespaced_odom_publisher',
+            arguments=['0', '0', '0',
+                       '0', '0', '0',
+                       'odom', [namespace, '/odom']],
+            remappings=[
+                ('/tf', 'tf'),
+                ('/tf_static', 'tf_static')
+            ],
+            output='screen',
+            condition=IfCondition(NotEqualsSubstitution(namespace, ''))
+        ),
+
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='tf_namespaced_base_link_publisher',
+            arguments=['0', '0', '0',
+                       '0', '0', '0',
+                       [namespace, '/base_link'], 'base_link'],
+            remappings=[
+                ('/tf', 'tf'),
+                ('/tf_static', 'tf_static')
+            ],
+            output='screen',
+            condition=IfCondition(NotEqualsSubstitution(namespace, ''))
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='hazards_vector_publisher',
+            executable='hazards_vector_publisher',
+            parameters=[hazards_params_yaml_file,
+                        {'use_sim_time': True}],
+            output='screen',
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='ir_intensity_vector_publisher',
+            executable='ir_intensity_vector_publisher',
+            parameters=[ir_intensity_params_yaml_file,
+                        {'use_sim_time': True}],
+            output='screen',
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='motion_control',
+            executable='motion_control',
+            parameters=[{
+                'use_sim_time': True,
+                'safety_override': 'backup_only'
+            }],
+            output='screen',
+            remappings=[
+                ('/tf', 'tf'),
+                ('/tf_static', 'tf_static')
             ]
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='wheel_status_publisher',
+            executable='wheel_status_publisher',
+            parameters=[wheel_status_params_yaml_file,
+                        {'use_sim_time': True}],
+            output='screen',
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='mock_publisher',
+            executable='mock_publisher',
+            parameters=[mock_params_yaml_file,
+                        {'use_sim_time': True}],
+            output='screen',
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='robot_state',
+            executable='robot_state',
+            parameters=[robot_state_yaml_file,
+                        {'use_sim_time': True}],
+            output='screen',
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='kidnap_estimator_publisher',
+            executable='kidnap_estimator_publisher',
+            parameters=[kidnap_estimator_yaml_file,
+                        {'use_sim_time': True}],
+            output='screen',
+        ),
+
+        Node(
+            package='irobot_create_nodes',
+            name='ui_mgr',
+            executable='ui_mgr',
+            parameters=[ui_mgr_params_yaml_file,
+                        {'use_sim_time': True},
+                        {'gazebo': 'ignition'}],
+            output='screen',
         ),
 
         # Create 3 Gazebo nodes
@@ -218,8 +415,8 @@ def generate_launch_description():
             ]
         ),
 
-        # OAKD static transform
-        # Required for pointcloud. See https://github.com/gazebosim/gz-sensors/issues/239
+        # OAKD static transform.
+        # Required for pointcloud.
         Node(
             name='camera_stf',
             package='tf2_ros',
