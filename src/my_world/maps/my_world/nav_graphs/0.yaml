@@ -99,7 +99,8 @@ levels:
       - {name: room1_1}
     - - 46.7493044877163
       - -3.7191616906892713
-      - {name: room1_2}
+      - {is_charger: true, is_holding_point: true, is_parking_spot: true, name: turtlebot2_charger,
+        spawn_robot_name: turtlebot2}
     - - 2.477641242455739
       - -2.5806346430421225
       - {is_charger: true, is_holding_point: true, is_parking_spot: true, name: tinyRobot1_charger,

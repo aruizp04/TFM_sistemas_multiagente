@@ -10,6 +10,9 @@
     </plugin>
     <plugin filename="libgz-sim-scene-broadcaster-system.so" name="gz::sim::systems::SceneBroadcaster">
     </plugin>
+    <plugin filename="libgz-sim-sensors-system.so" name="gz::sim::systems::Sensors">
+      <render_engine>ogre</render_engine>
+    </plugin>
     <plugin filename="libdoor.so" name="door">
     </plugin>
     <plugin filename="liblift.so" name="lift">
@@ -449,6 +452,7 @@
       <pose>0 0 0.0 0 0 0</pose>
     </include>
     <rmf_charger_waypoints name="charger_waypoints">
+      <rmf_vertex name="turtlebot2_charger" x="46.7493044877163" y="-3.7191616906892713" level="L1" />
       <rmf_vertex name="turtlebot1_charger" x="46.20318948062646" y="-19.990319098667428" level="L1" />
       <rmf_vertex name="tinyRobot1_charger" x="2.477641242455739" y="-2.5806346430421225" level="L1" />
     </rmf_charger_waypoints>
