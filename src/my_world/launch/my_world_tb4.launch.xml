@@ -33,8 +33,8 @@
     <arg name="slam" value="false"/>
     <arg name="localization" value="false"/>
     <arg name="nav2" value="false"/>
-    <arg name="x" value="46.19"/>
-    <arg name="y" value="-19.95"/>
+    <arg name="x" value="32.35839943118211"/>
+    <arg name="y" value="-14.000218110974842"/>
     <arg name="z" value="0.2"/>
     <arg name="yaw" value="1.52"/>
   </include>
@@ -50,8 +50,8 @@
     <arg name="slam" value="false"/>
     <arg name="localization" value="false"/>
     <arg name="nav2" value="false"/>
-    <arg name="x" value="46.75"/>
-    <arg name="y" value="-3.72"/>
+    <arg name="x" value="32.74087102531709"/>
+    <arg name="y" value="-2.604714542205718"/>
     <arg name="z" value="0.2"/>
     <arg name="yaw" value="1.52"/>
   </include>

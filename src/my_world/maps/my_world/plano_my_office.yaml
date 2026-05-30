@@ -1,6 +1,6 @@
 image: plano_my_office.png
-resolution: 0.05
-origin: [0.0, -21.5, 0.0]
+resolution: 0.035015251683144025
+origin: [0.0, -15.126588727118218, 0.0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.196

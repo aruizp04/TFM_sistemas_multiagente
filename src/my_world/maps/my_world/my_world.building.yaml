@@ -1,7 +1,7 @@
 coordinate_system: reference_image
 crowd_sim:
   agent_groups:
-    - {agents_name: [turtlebot1, tinyRobot1], agents_number: 2, group_id: 0, profile_selector: external_agent, state_selector: external_static, x: 0, y: 0}
+    - {agents_name: [turtlebot2, turtlebot1, tinyRobot1], agents_number: 3, group_id: 0, profile_selector: external_agent, state_selector: external_static, x: 0, y: 0}
   agent_profiles:
     - {ORCA_tau: 1, ORCA_tauObst: 0.40000000000000002, class: 1, max_accel: 0, max_angle_vel: 0, max_neighbors: 10, max_speed: 0, name: external_agent, neighbor_dist: 5, obstacle_set: 1, pref_speed: 0, r: 0.25}
   enable: 0
@@ -57,8 +57,8 @@ levels:
           yaw: 0
         visible: true
     measurements:
-      - [0, 1, {distance: [3, 21.445799999999998]}]
-      - [2, 3, {distance: [3, 49.909999999999997]}]
+      - [0, 1, {distance: [3, 15]}]
+      - [2, 3, {distance: [3, 35]}]
     vertices:
       - [374.23399999999998, 2.0619999999999998, 0, ""]
       - [371.40600000000001, 430.97000000000003, 0, ""]
