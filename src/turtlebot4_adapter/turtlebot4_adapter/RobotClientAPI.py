@@ -1,19 +1,37 @@
 # Copyright 2021 Open Source Robotics Foundation, Inc.
 #
-# Licensed under the Apache License, Version 2.0
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import math
+from pathlib import Path
 import threading
-from typing import Optional
+import xml.etree.ElementTree as ET
 
-import rclpy
-from rclpy.action import ActionClient
-from rclpy.executors import SingleThreadedExecutor
-
+from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import TwistStamped
 from nav2_msgs.action import NavigateToPose
+import rclpy
+from rclpy.action import ActionClient
+from rclpy.clock import Clock
+from rclpy.clock import ClockType
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.parameter import Parameter
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import HistoryPolicy
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
 from sensor_msgs.msg import BatteryState
 
 
@@ -21,17 +39,25 @@ class RobotAPI:
     """
     API minima para conectar RMF con un TurtleBot4 simulado.
 
-    - Posicion: /amcl_pose
-    - Navegacion Nav2: /navigate_to_pose
+    - Posicion: <namespace>/amcl_pose
+    - Navegacion Nav2: <namespace>/navigate_to_pose
     - Navegacion EasyNav: pendiente de implementar
     - Stop: /cmd_vel
     - Bateria: /battery_state
     """
 
-    def __init__(self, config_yaml):
+    def __init__(self, config_yaml, use_sim_time=False, charger_name=None):
         self.prefix = config_yaml.get('prefix', '')
         self.user = config_yaml.get('user', '')
         self.password = config_yaml.get('password', '')
+        self.namespace = config_yaml.get('namespace', '').strip('/')
+        self.charger_name = charger_name
+        self.initial_pose_source = config_yaml.get('initial_pose_source')
+        self.initial_pose = self._resolve_initial_pose(config_yaml)
+        self.initial_pose_frame = config_yaml.get('initial_pose_frame', 'map')
+        self.initial_pose_retry_period = float(
+            config_yaml.get('initial_pose_retry_period', 2.0)
+        )
 
         self.timeout = 5.0
         self.debug = True
@@ -45,6 +71,9 @@ class RobotAPI:
         self.navigation_backend = config_yaml.get('navigation_backend', 'nav2')
 
         self._pose = None
+        self._amcl_pose_received = False
+        self._first_amcl_pose_logged = False
+        self._last_missing_amcl_warning_time = None
         self._battery_soc = 1.0
 
         self._goal_handle = None
@@ -54,31 +83,80 @@ class RobotAPI:
         if not rclpy.ok():
             rclpy.init(args=None)
 
-        self.node = rclpy.create_node('turtlebot4_robot_api')
+        node_name = 'turtlebot4_robot_api'
+        if self.namespace:
+            node_name = f'{self.namespace}_robot_api'
+
+        if self.namespace:
+            self.node = rclpy.create_node(
+                node_name,
+                namespace=f'/{self.namespace}'
+            )
+        else:
+            self.node = rclpy.create_node(node_name)
+
+        if use_sim_time:
+            self.node.set_parameters([
+                Parameter('use_sim_time', Parameter.Type.BOOL, True)
+            ])
 
         self.node.get_logger().info(
             f'Navigation backend selected: {self.navigation_backend}'
         )
+        self.node.get_logger().info(
+            f'Using robot namespace: /{self.namespace}' if self.namespace
+            else 'Using global robot namespace'
+        )
+
+        amcl_pose_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
 
         self.pose_sub = self.node.create_subscription(
             PoseWithCovarianceStamped,
-            '/amcl_pose',
+            'amcl_pose',
             self._amcl_pose_callback,
-            10
+            amcl_pose_qos
         )
 
         self.battery_sub = self.node.create_subscription(
             BatteryState,
-            '/battery_state',
+            'battery_state',
             self._battery_callback,
             10
         )
 
         self.cmd_vel_pub = self.node.create_publisher(
             TwistStamped,
-            '/cmd_vel',
+            'cmd_vel',
             10
         )
+
+        self.initial_pose_pub = self.node.create_publisher(
+            PoseWithCovarianceStamped,
+            'initialpose',
+            10
+        )
+        self.initial_pose_timer = None
+        if self.initial_pose is not None:
+            self.initial_pose_timer = self.node.create_timer(
+                self.initial_pose_retry_period,
+                self._publish_initial_pose_if_needed,
+                clock=Clock(clock_type=ClockType.STEADY_TIME)
+            )
+            self.node.get_logger().warn(
+                'Waiting for first AMCL pose; automatic initial pose '
+                f'will be published every '
+                f'{self.initial_pose_retry_period:.1f}s'
+            )
+        else:
+            self.node.get_logger().warn(
+                'Waiting for first AMCL pose; no automatic initial_pose '
+                'is configured'
+            )
 
         # Cliente de Nav2.
         # Se mantiene igual que en tu implementacion actual.
@@ -87,7 +165,7 @@ class RobotAPI:
             self.nav_to_pose_client = ActionClient(
                 self.node,
                 NavigateToPose,
-                '/navigate_to_pose'
+                'navigate_to_pose'
             )
 
         # Aqui se podran declarar publishers, services o action clients de EasyNav
@@ -103,8 +181,97 @@ class RobotAPI:
         )
         self.spin_thread.start()
 
+    def _resolve_initial_pose(self, config_yaml):
+        if 'initial_pose' in config_yaml:
+            return config_yaml.get('initial_pose')
+
+        if config_yaml.get('initial_pose_source') != 'world_charger':
+            return None
+
+        world_package = config_yaml.get('initial_pose_world_package')
+        world_name = config_yaml.get('initial_pose_world_name')
+        initial_yaw = config_yaml.get('initial_pose_yaw')
+        if not world_package or not world_name:
+            raise ValueError(
+                'initial_pose_source=world_charger requires '
+                'initial_pose_world_package and initial_pose_world_name'
+            )
+        if self.charger_name is None:
+            raise ValueError(
+                'initial_pose_source=world_charger requires a robot charger'
+            )
+        if initial_yaw is None:
+            raise ValueError(
+                'initial_pose_source=world_charger requires initial_pose_yaw'
+            )
+
+        world_path = (
+            Path(get_package_share_directory(world_package)) /
+            'maps' / world_name / f'{world_name}.world'
+        )
+        try:
+            root = ET.parse(world_path).getroot()
+        except Exception as e:
+            raise RuntimeError(
+                f'Failed to parse initial pose world file [{world_path}]: {e}'
+            ) from e
+
+        for vertex in root.findall('.//rmf_charger_waypoints/rmf_vertex'):
+            if vertex.get('name') == self.charger_name:
+                return [
+                    float(vertex.get('x')),
+                    float(vertex.get('y')),
+                    float(initial_yaw)
+                ]
+
+        raise RuntimeError(
+            f'Charger [{self.charger_name}] was not found in world file '
+            f'[{world_path}]'
+        )
+
     def _amcl_pose_callback(self, msg: PoseWithCovarianceStamped):
         self._pose = msg.pose.pose
+        self._amcl_pose_received = True
+        if not self._first_amcl_pose_logged:
+            self.node.get_logger().info('First AMCL pose received')
+            self._first_amcl_pose_logged = True
+        if self.initial_pose_timer is not None:
+            self.initial_pose_timer.cancel()
+
+    def _build_initial_pose_msg(self, pose):
+        msg = PoseWithCovarianceStamped()
+        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.header.frame_id = self.initial_pose_frame
+
+        msg.pose.pose.position.x = float(pose[0])
+        msg.pose.pose.position.y = float(pose[1])
+        msg.pose.pose.position.z = 0.0
+
+        qz, qw = self._quaternion_from_yaw(float(pose[2]))
+        msg.pose.pose.orientation.z = qz
+        msg.pose.pose.orientation.w = qw
+
+        msg.pose.covariance[0] = 0.25
+        msg.pose.covariance[7] = 0.25
+        msg.pose.covariance[35] = 0.06853891945200942
+
+        return msg
+
+    def _publish_initial_pose_if_needed(self):
+        if self._amcl_pose_received or self.initial_pose is None:
+            return
+
+        try:
+            msg = self._build_initial_pose_msg(self.initial_pose)
+            self.initial_pose_pub.publish(msg)
+            self.node.get_logger().warn(
+                'Publishing automatic initial pose for AMCL: '
+                f'{self.initial_pose} in frame [{self.initial_pose_frame}]'
+            )
+        except Exception as e:
+            self.node.get_logger().error(
+                f'Failed to publish automatic initial pose: {e}'
+            )
 
     def _battery_callback(self, msg: BatteryState):
         if msg.percentage >= 0.0:
@@ -138,25 +305,8 @@ class RobotAPI:
         pose llega como [x, y, theta].
         """
         try:
-            pub = self.node.create_publisher(
-                PoseWithCovarianceStamped,
-                '/initialpose',
-                10
-            )
-
-            msg = PoseWithCovarianceStamped()
-            msg.header.stamp = self.node.get_clock().now().to_msg()
-            msg.header.frame_id = 'map'
-
-            msg.pose.pose.position.x = float(pose[0])
-            msg.pose.pose.position.y = float(pose[1])
-            msg.pose.pose.position.z = 0.0
-
-            qz, qw = self._quaternion_from_yaw(float(pose[2]))
-            msg.pose.pose.orientation.z = qz
-            msg.pose.pose.orientation.w = qw
-
-            pub.publish(msg)
+            msg = self._build_initial_pose_msg(pose)
+            self.initial_pose_pub.publish(msg)
             self.map_name = map_name
 
             self.node.get_logger().info(
@@ -221,7 +371,7 @@ class RobotAPI:
 
             if not self.nav_to_pose_client.wait_for_server(timeout_sec=2.0):
                 self.node.get_logger().error(
-                    'Nav2 action server /navigate_to_pose not available'
+                    'Nav2 action server navigate_to_pose not available'
                 )
                 return False
 
@@ -262,9 +412,7 @@ class RobotAPI:
         map_name: str,
         speed_limit=0.0
     ):
-        """
-        EASYNAV
-        """
+        """Navigate with EasyNav placeholder."""
         self.node.get_logger().warn(
             f'[EASYNAV] Navigation requested for [{robot_name}] '
             f'to pose {pose} on map [{map_name}], but EasyNav is not implemented yet'
@@ -354,7 +502,7 @@ class RobotAPI:
     def battery_soc(self, robot_name: str):
         return self._battery_soc
 
-    def map(self, robot_name: str):
+    def map(self, robot_name: str):  # noqa: A003
         return self.map_name
 
     def is_command_completed(self):
@@ -368,6 +516,22 @@ class RobotAPI:
         if not (map_name is None or position is None or battery_soc is None):
             return RobotUpdateData(robot_name, map_name, position, battery_soc)
 
+        if position is None:
+            now = self.node.get_clock().now()
+            warn = self._last_missing_amcl_warning_time is None
+            if not warn:
+                elapsed = (
+                    now - self._last_missing_amcl_warning_time
+                ).nanoseconds / 1e9
+                warn = elapsed >= self.initial_pose_retry_period
+
+            if warn:
+                self.node.get_logger().warn(
+                    f'Waiting for AMCL pose before reporting [{robot_name}] '
+                    'to RMF'
+                )
+                self._last_missing_amcl_warning_time = now
+
         return None
 
 
@@ -377,7 +541,7 @@ class RobotUpdateData:
     def __init__(
         self,
         robot_name: str,
-        map: str,
+        map: str,  # noqa: A002
         position: list[float],
         battery_soc: float,
         requires_replan: bool | None = None
