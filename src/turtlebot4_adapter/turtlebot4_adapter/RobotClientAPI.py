@@ -12,36 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from pathlib import Path
 import threading
 import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import PoseStamped
-from geometry_msgs.msg import PoseWithCovarianceStamped
-from geometry_msgs.msg import TwistStamped
-from nav2_msgs.action import NavigateToPose
 import rclpy
-from rclpy.action import ActionClient
-from rclpy.clock import Clock
-from rclpy.clock import ClockType
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.parameter import Parameter
-from rclpy.qos import DurabilityPolicy
-from rclpy.qos import HistoryPolicy
-from rclpy.qos import QoSProfile
-from rclpy.qos import ReliabilityPolicy
 from sensor_msgs.msg import BatteryState
+
+from .navigator import create_navigation_backend
 
 
 class RobotAPI:
     """
     API minima para conectar RMF con un TurtleBot4 simulado.
 
-    - Posicion: <namespace>/amcl_pose
+    - Posicion Nav2: <namespace>/amcl_pose
+    - Posicion EasyNav: <namespace>/localizer_node/simple/pose
     - Navegacion Nav2: <namespace>/navigate_to_pose
-    - Navegacion EasyNav: pendiente de implementar
+    - Navegacion EasyNav: <namespace>/easynav_control
     - Stop: /cmd_vel
     - Bateria: /battery_state
     """
@@ -58,27 +49,27 @@ class RobotAPI:
         self.initial_pose_retry_period = float(
             config_yaml.get('initial_pose_retry_period', 2.0)
         )
+        self.report_initial_pose_until_localized = bool(
+            config_yaml.get('report_initial_pose_until_localized', False)
+        )
+        self._reported_initial_pose_fallback = False
 
         self.timeout = 5.0
         self.debug = True
 
         self.map_name = 'L1'
+        self.navigation_backend = config_yaml.get(
+            'navigation_backend', 'nav2'
+        ).lower()
+        self.allow_navigation_before_localized = bool(
+            config_yaml.get(
+                'allow_navigation_before_localized',
+                self.navigation_backend != 'nav2'
+            )
+        )
 
-        # Selector de backend de navegacion.
-        # Valores esperados:
-        #   - nav2
-        #   - easynav
-        self.navigation_backend = config_yaml.get('navigation_backend', 'nav2')
-
-        self._pose = None
-        self._amcl_pose_received = False
-        self._first_amcl_pose_logged = False
-        self._last_missing_amcl_warning_time = None
+        self._last_missing_pose_warning_time = None
         self._battery_soc = 1.0
-
-        self._goal_handle = None
-        self._result_future = None
-        self._command_completed = True
 
         if not rclpy.ok():
             rclpy.init(args=None)
@@ -108,18 +99,16 @@ class RobotAPI:
             else 'Using global robot namespace'
         )
 
-        amcl_pose_qos = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        self.navigator = create_navigation_backend(
+            self.navigation_backend,
+            self.node
         )
 
-        self.pose_sub = self.node.create_subscription(
-            PoseWithCovarianceStamped,
-            'amcl_pose',
-            self._amcl_pose_callback,
-            amcl_pose_qos
+        self.pose_sub = self.navigator.create_pose_subscription(
+            self._pose_callback
+        )
+        self.node.get_logger().info(
+            f'Waiting for localization pose on [{self.navigator.pose_topic}]'
         )
 
         self.battery_sub = self.node.create_subscription(
@@ -129,48 +118,11 @@ class RobotAPI:
             10
         )
 
-        self.cmd_vel_pub = self.node.create_publisher(
-            TwistStamped,
-            'cmd_vel',
-            10
+        self.navigator.configure_initial_pose(
+            self.initial_pose,
+            self.initial_pose_frame,
+            self.initial_pose_retry_period
         )
-
-        self.initial_pose_pub = self.node.create_publisher(
-            PoseWithCovarianceStamped,
-            'initialpose',
-            10
-        )
-        self.initial_pose_timer = None
-        if self.initial_pose is not None:
-            self.initial_pose_timer = self.node.create_timer(
-                self.initial_pose_retry_period,
-                self._publish_initial_pose_if_needed,
-                clock=Clock(clock_type=ClockType.STEADY_TIME)
-            )
-            self.node.get_logger().warn(
-                'Waiting for first AMCL pose; automatic initial pose '
-                f'will be published every '
-                f'{self.initial_pose_retry_period:.1f}s'
-            )
-        else:
-            self.node.get_logger().warn(
-                'Waiting for first AMCL pose; no automatic initial_pose '
-                'is configured'
-            )
-
-        # Cliente de Nav2.
-        # Se mantiene igual que en tu implementacion actual.
-        self.nav_to_pose_client = None
-        if self.navigation_backend == 'nav2':
-            self.nav_to_pose_client = ActionClient(
-                self.node,
-                NavigateToPose,
-                'navigate_to_pose'
-            )
-
-        # Aqui se podran declarar publishers, services o action clients de EasyNav
-        # cuando se decida cual es su interfaz real.
-        self.easynav_client = None
 
         self.executor = SingleThreadedExecutor()
         self.executor.add_node(self.node)
@@ -229,225 +181,49 @@ class RobotAPI:
             f'[{world_path}]'
         )
 
-    def _amcl_pose_callback(self, msg: PoseWithCovarianceStamped):
-        self._pose = msg.pose.pose
-        self._amcl_pose_received = True
-        if not self._first_amcl_pose_logged:
-            self.node.get_logger().info('First AMCL pose received')
-            self._first_amcl_pose_logged = True
-        if self.initial_pose_timer is not None:
-            self.initial_pose_timer.cancel()
-
-    def _build_initial_pose_msg(self, pose):
-        msg = PoseWithCovarianceStamped()
-        msg.header.stamp = self.node.get_clock().now().to_msg()
-        msg.header.frame_id = self.initial_pose_frame
-
-        msg.pose.pose.position.x = float(pose[0])
-        msg.pose.pose.position.y = float(pose[1])
-        msg.pose.pose.position.z = 0.0
-
-        qz, qw = self._quaternion_from_yaw(float(pose[2]))
-        msg.pose.pose.orientation.z = qz
-        msg.pose.pose.orientation.w = qw
-
-        msg.pose.covariance[0] = 0.25
-        msg.pose.covariance[7] = 0.25
-        msg.pose.covariance[35] = 0.06853891945200942
-
-        return msg
-
-    def _publish_initial_pose_if_needed(self):
-        if self._amcl_pose_received or self.initial_pose is None:
-            return
-
-        try:
-            msg = self._build_initial_pose_msg(self.initial_pose)
-            self.initial_pose_pub.publish(msg)
-            self.node.get_logger().warn(
-                'Publishing automatic initial pose for AMCL: '
-                f'{self.initial_pose} in frame [{self.initial_pose_frame}]'
-            )
-        except Exception as e:
-            self.node.get_logger().error(
-                f'Failed to publish automatic initial pose: {e}'
-            )
+    def _pose_callback(self, msg):
+        self.navigator.store_pose(msg)
+        self.navigator.on_pose_received()
 
     def _battery_callback(self, msg: BatteryState):
         if msg.percentage >= 0.0:
             self._battery_soc = float(msg.percentage)
 
-    @staticmethod
-    def _yaw_from_quaternion(q):
-        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        return math.atan2(siny_cosp, cosy_cosp)
-
-    @staticmethod
-    def _quaternion_from_yaw(yaw: float):
-        qz = math.sin(yaw * 0.5)
-        qw = math.cos(yaw * 0.5)
-        return qz, qw
-
     def check_connection(self):
         """
         Devuelve True si el nodo ROS esta vivo.
 
-        En esta primera version no exigimos haber recibido aun /amcl_pose,
+        En esta primera version no exigimos haber recibido aun la pose,
         porque al arrancar puede tardar hasta que se haga 2D Pose Estimate.
         """
         return rclpy.ok()
 
     def localize(self, robot_name: str, pose, map_name: str):
-        """
-        Publica una estimacion inicial en /initialpose.
-
-        pose llega como [x, y, theta].
-        """
-        try:
-            msg = self._build_initial_pose_msg(pose)
-            self.initial_pose_pub.publish(msg)
+        """Delegate localization to the active navigation backend."""
+        localized = self.navigator.localize(robot_name, pose, map_name)
+        if localized:
             self.map_name = map_name
-
-            self.node.get_logger().info(
-                f'Initial pose sent for [{robot_name}] on map [{map_name}]'
-            )
-            return True
-
-        except Exception as e:
-            self.node.get_logger().error(f'localize() failed: {e}')
-            return False
+        return localized
 
     def navigate(self, robot_name: str, pose, map_name: str, speed_limit=0.0):
-        """
-        Punto unico de entrada para navegacion desde RMF.
-
-        Dependiendo de navigation_backend, redirige la orden a:
-        - Nav2
-        - EasyNav
-        """
-        if self.navigation_backend == 'nav2':
-            return self._navigate_with_nav2(
-                robot_name,
-                pose,
-                map_name,
-                speed_limit
+        """Delegate navigation from RMF to the active backend."""
+        if (
+            self.navigation_backend == 'nav2' and
+            not self.allow_navigation_before_localized and
+            not self.has_localized_pose()
+        ):
+            self.node.get_logger().error(
+                f'Refusing Nav2 navigation for [{robot_name}] before a real '
+                f'pose is received on [{self.navigator.pose_topic}]'
             )
-
-        if self.navigation_backend == 'easynav':
-            return self._navigate_with_easynav(
-                robot_name,
-                pose,
-                map_name,
-                speed_limit
-            )
-
-        self.node.get_logger().error(
-            f'Unknown navigation backend: {self.navigation_backend}'
-        )
-        return False
-
-    def _navigate_with_nav2(
-        self,
-        robot_name: str,
-        pose,
-        map_name: str,
-        speed_limit=0.0
-    ):
-        """
-        Nav2.
-
-        Se mantiene igual que tu navigate() original:
-        - Usa /navigate_to_pose
-        - Envia NavigateToPose.Goal
-        - Usa callbacks de goal/result
-        """
-        try:
-            if self.nav_to_pose_client is None:
-                self.node.get_logger().error(
-                    'Nav2 backend selected but nav_to_pose_client is not initialized'
-                )
-                return False
-
-            if not self.nav_to_pose_client.wait_for_server(timeout_sec=2.0):
-                self.node.get_logger().error(
-                    'Nav2 action server navigate_to_pose not available'
-                )
-                return False
-
-            goal_msg = NavigateToPose.Goal()
-            goal_msg.pose = PoseStamped()
-            goal_msg.pose.header.stamp = self.node.get_clock().now().to_msg()
-            goal_msg.pose.header.frame_id = 'map'
-
-            goal_msg.pose.pose.position.x = float(pose[0])
-            goal_msg.pose.pose.position.y = float(pose[1])
-            goal_msg.pose.pose.position.z = 0.0
-
-            qz, qw = self._quaternion_from_yaw(float(pose[2]))
-            goal_msg.pose.pose.orientation.z = qz
-            goal_msg.pose.pose.orientation.w = qw
-
-            self._command_completed = False
-            self._goal_handle = None
-            self._result_future = None
-
-            send_goal_future = self.nav_to_pose_client.send_goal_async(goal_msg)
-            send_goal_future.add_done_callback(self._goal_response_callback)
-
-            self.node.get_logger().info(
-                f'[NAV2] Navigation goal sent to [{robot_name}]: {pose}'
-            )
-            return True
-
-        except Exception as e:
-            self.node.get_logger().error(f'_navigate_with_nav2() failed: {e}')
-            self._command_completed = True
             return False
 
-    def _navigate_with_easynav(
-        self,
-        robot_name: str,
-        pose,
-        map_name: str,
-        speed_limit=0.0
-    ):
-        """Navigate with EasyNav placeholder."""
-        self.node.get_logger().warn(
-            f'[EASYNAV] Navigation requested for [{robot_name}] '
-            f'to pose {pose} on map [{map_name}], but EasyNav is not implemented yet'
+        return self.navigator.navigate(
+            robot_name,
+            pose,
+            map_name,
+            speed_limit
         )
-
-        self._command_completed = True
-        return False
-
-    def _goal_response_callback(self, future):
-        try:
-            goal_handle = future.result()
-            if not goal_handle.accepted:
-                self.node.get_logger().warn('Nav2 goal rejected')
-                self._command_completed = True
-                return
-
-            self.node.get_logger().info('Nav2 goal accepted')
-            self._goal_handle = goal_handle
-            self._result_future = goal_handle.get_result_async()
-            self._result_future.add_done_callback(self._navigation_result_callback)
-
-        except Exception as e:
-            self.node.get_logger().error(f'Goal response callback failed: {e}')
-            self._command_completed = True
-
-    def _navigation_result_callback(self, future):
-        try:
-            result = future.result()
-            self.node.get_logger().info(
-                f'Nav2 goal finished with status: {result.status}'
-            )
-        except Exception as e:
-            self.node.get_logger().error(f'Navigation result callback failed: {e}')
-
-        self._command_completed = True
 
     def start_activity(self, robot_name: str, activity: str, label: str):
         self.node.get_logger().info(
@@ -456,32 +232,8 @@ class RobotAPI:
         return True
 
     def stop(self, robot_name: str):
-        """
-        Publica velocidad cero.
-
-        De momento se mantiene comun para Nav2 y EasyNav.
-        """
-        try:
-            msg = TwistStamped()
-            msg.header.stamp = self.node.get_clock().now().to_msg()
-            msg.header.frame_id = 'base_link'
-
-            msg.twist.linear.x = 0.0
-            msg.twist.linear.y = 0.0
-            msg.twist.linear.z = 0.0
-            msg.twist.angular.x = 0.0
-            msg.twist.angular.y = 0.0
-            msg.twist.angular.z = 0.0
-
-            self.cmd_vel_pub.publish(msg)
-            self._command_completed = True
-
-            self.node.get_logger().info(f'Stop command sent to [{robot_name}]')
-            return True
-
-        except Exception as e:
-            self.node.get_logger().error(f'stop() failed: {e}')
-            return False
+        """Stop through the active navigation backend."""
+        return self.navigator.stop(robot_name)
 
     def position(self, robot_name: str):
         """
@@ -490,14 +242,27 @@ class RobotAPI:
         La transformacion a coordenadas RMF se define en config.yaml mediante
         reference_coordinates.
         """
-        if self._pose is None:
-            return None
+        position = self.navigator.position()
+        if position is not None:
+            return position
 
-        x = self._pose.position.x
-        y = self._pose.position.y
-        theta = self._yaw_from_quaternion(self._pose.orientation)
+        if (
+            self.report_initial_pose_until_localized and
+            self.initial_pose is not None
+        ):
+            if not self._reported_initial_pose_fallback:
+                self.node.get_logger().warn(
+                    f'Using configured initial pose for [{robot_name}] until '
+                    f'[{self.navigator.pose_topic}] is received'
+                )
+                self._reported_initial_pose_fallback = True
+            return [
+                float(self.initial_pose[0]),
+                float(self.initial_pose[1]),
+                float(self.initial_pose[2])
+            ]
 
-        return [x, y, theta]
+        return None
 
     def battery_soc(self, robot_name: str):
         return self._battery_soc
@@ -506,7 +271,13 @@ class RobotAPI:
         return self.map_name
 
     def is_command_completed(self):
-        return self._command_completed
+        return self.navigator.is_command_completed()
+
+    def has_localized_pose(self):
+        return self.navigator.has_localized_pose()
+
+    def last_command_failed(self):
+        return self.navigator.last_command_failed()
 
     def get_data(self, robot_name: str):
         map_name = self.map(robot_name)
@@ -518,19 +289,20 @@ class RobotAPI:
 
         if position is None:
             now = self.node.get_clock().now()
-            warn = self._last_missing_amcl_warning_time is None
+            warn = self._last_missing_pose_warning_time is None
             if not warn:
                 elapsed = (
-                    now - self._last_missing_amcl_warning_time
+                    now - self._last_missing_pose_warning_time
                 ).nanoseconds / 1e9
                 warn = elapsed >= self.initial_pose_retry_period
 
             if warn:
                 self.node.get_logger().warn(
-                    f'Waiting for AMCL pose before reporting [{robot_name}] '
-                    'to RMF'
+                    'Waiting for localization pose on '
+                    f'[{self.navigator.pose_topic}] before reporting '
+                    f'[{robot_name}] to RMF'
                 )
-                self._last_missing_amcl_warning_time = now
+                self._last_missing_pose_warning_time = now
 
         return None
 

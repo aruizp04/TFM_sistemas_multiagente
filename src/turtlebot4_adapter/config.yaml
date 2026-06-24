@@ -63,6 +63,7 @@ fleet_manager:
   initial_pose_yaw: 1.52
   initial_pose_frame: "map"
   initial_pose_retry_period: 2.0
+  report_initial_pose_until_localized: true
 
 
 # TRANSFORM CONFIG =============================================================
@@ -70,7 +71,6 @@ fleet_manager:
 # Mas adelante, si el adaptador necesita transformar entre coordenadas de mapa ROS y RMF,
 # se rellenara esta seccion con puntos equivalentes.
 
-navigation_backend: nav2
 
 reference_coordinates:
   L1:

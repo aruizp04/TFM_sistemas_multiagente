@@ -1,5 +1,6 @@
 <launch>
   <arg name="use_sim_time" default="true"/>
+  <arg name="navigation_backend" default="nav2"/>
 
   <!-- Common launch -->
   <include file="$(find-pkg-share rmf_demos)/common.launch.xml">
@@ -15,73 +16,150 @@
     <arg name="config_file" value="$(find-pkg-share my_world)/config/tinyRobot_config.yaml"/>
   </include>
 
-  <!-- Mundo RMF -->
-  <include file="$(find-pkg-share rmf_demos_gz)/simulation.launch.xml">
-    <arg name="map_package" value="my_world"/>
-    <arg name="map_name" value="my_world"/>
-    <arg name="headless" value="false"/>
-  </include>
+  <!-- Mundo RMF. Nav2 keeps the upstream simulation launch, including its clock bridge. -->
+  <group if="$(eval &quot;'$(var navigation_backend)' == 'nav2'&quot;)">
+    <include file="$(find-pkg-share rmf_demos_gz)/simulation.launch.xml">
+      <arg name="map_package" value="my_world"/>
+      <arg name="map_name" value="my_world"/>
+      <arg name="headless" value="false"/>
+    </include>
+  </group>
+
+  <!-- EasyNav uses the same simulation without /clock, then starts one explicit bridge. -->
+  <group if="$(eval &quot;'$(var navigation_backend)' == 'easynav'&quot;)">
+    <include file="$(find-pkg-share my_world)/launch/simulation_no_clock.launch.xml">
+      <arg name="map_package" value="my_world"/>
+      <arg name="map_name" value="my_world"/>
+      <arg name="headless" value="false"/>
+    </include>
+
+    <node pkg="ros_gz_bridge" exec="parameter_bridge"
+      name="my_world_clock_bridge"
+      args="/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"/>
+  </group>
 
   <!-- Spawn del primer TurtleBot4 -->
-  <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
-    <arg name="namespace" value="turtlebot1"/>
-    <arg name="robot_name" value="turtlebot1"/>
-    <arg name="dock_name" value="turtlebot1_standard_dock"/>
-    <arg name="model" value="lite"/>
-    <arg name="use_sim_time" value="$(var use_sim_time)"/>
-    <arg name="rviz" value="false"/>
-    <arg name="slam" value="false"/>
-    <arg name="localization" value="false"/>
-    <arg name="nav2" value="false"/>
-    <arg name="x" value="32.35839943118211"/>
-    <arg name="y" value="-14.000218110974842"/>
-    <arg name="z" value="0.2"/>
-    <arg name="yaw" value="1.52"/>
-  </include>
+  <group if="$(eval &quot;'$(var navigation_backend)' == 'nav2'&quot;)">
+    <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
+      <arg name="namespace" value="turtlebot1"/>
+      <arg name="robot_name" value="turtlebot1"/>
+      <arg name="dock_name" value="turtlebot1_standard_dock"/>
+      <arg name="model" value="lite"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="rviz" value="false"/>
+      <arg name="slam" value="false"/>
+      <arg name="localization" value="false"/>
+      <arg name="nav2" value="false"/>
+      <arg name="publish_tf_namespace_bridges" value="true"/>
+      <arg name="x" value="32.35839943118211"/>
+      <arg name="y" value="-14.000218110974842"/>
+      <arg name="z" value="0.2"/>
+      <arg name="yaw" value="1.52"/>
+    </include>
+  </group>
 
   <!-- Spawn del segundo TurtleBot4 -->
-  <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
-    <arg name="namespace" value="turtlebot2"/>
-    <arg name="robot_name" value="turtlebot2"/>
-    <arg name="dock_name" value="turtlebot2_standard_dock"/>
-    <arg name="model" value="lite"/>
-    <arg name="use_sim_time" value="$(var use_sim_time)"/>
-    <arg name="rviz" value="false"/>
-    <arg name="slam" value="false"/>
-    <arg name="localization" value="false"/>
-    <arg name="nav2" value="false"/>
-    <arg name="x" value="32.74087102531709"/>
-    <arg name="y" value="-2.604714542205718"/>
-    <arg name="z" value="0.2"/>
-    <arg name="yaw" value="1.52"/>
-  </include>
+  <group if="$(eval &quot;'$(var navigation_backend)' == 'nav2'&quot;)">
+    <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
+      <arg name="namespace" value="turtlebot2"/>
+      <arg name="robot_name" value="turtlebot2"/>
+      <arg name="dock_name" value="turtlebot2_standard_dock"/>
+      <arg name="model" value="lite"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="rviz" value="false"/>
+      <arg name="slam" value="false"/>
+      <arg name="localization" value="false"/>
+      <arg name="nav2" value="false"/>
+      <arg name="publish_tf_namespace_bridges" value="true"/>
+      <arg name="x" value="32.74087102531709"/>
+      <arg name="y" value="-2.604714542205718"/>
+      <arg name="z" value="0.2"/>
+      <arg name="yaw" value="1.52"/>
+    </include>
+  </group>
+
+  <!-- EasyNav spawn waits briefly so the explicit /clock bridge is already active. -->
+  <timer period="2.0">
+    <group if="$(eval &quot;'$(var navigation_backend)' == 'easynav'&quot;)">
+      <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
+        <arg name="namespace" value="turtlebot1"/>
+        <arg name="robot_name" value="turtlebot1"/>
+        <arg name="dock_name" value="turtlebot1_standard_dock"/>
+        <arg name="model" value="lite"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="rviz" value="false"/>
+        <arg name="slam" value="false"/>
+        <arg name="localization" value="false"/>
+        <arg name="nav2" value="false"/>
+        <arg name="publish_tf_namespace_bridges" value="true"/>
+        <arg name="rplidar_tf_parent_frame" value="turtlebot1/base_link"/>
+        <arg name="x" value="32.35839943118211"/>
+        <arg name="y" value="-14.000218110974842"/>
+        <arg name="z" value="0.2"/>
+        <arg name="yaw" value="1.52"/>
+      </include>
+
+      <include file="$(find-pkg-share my_world)/launch/turtlebot4_spawn.launch.py">
+        <arg name="namespace" value="turtlebot2"/>
+        <arg name="robot_name" value="turtlebot2"/>
+        <arg name="dock_name" value="turtlebot2_standard_dock"/>
+        <arg name="model" value="lite"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="rviz" value="false"/>
+        <arg name="slam" value="false"/>
+        <arg name="localization" value="false"/>
+        <arg name="nav2" value="false"/>
+        <arg name="publish_tf_namespace_bridges" value="true"/>
+        <arg name="rplidar_tf_parent_frame" value="turtlebot2/base_link"/>
+        <arg name="x" value="32.74087102531709"/>
+        <arg name="y" value="-2.604714542205718"/>
+        <arg name="z" value="0.2"/>
+        <arg name="yaw" value="1.52"/>
+      </include>
+    </group>
+  </timer>
 
   <!-- Localización/Nav2 se retrasan para que ros2_control publique odometría. -->
   <timer period="12.0">
-    <!-- Localización con mapa del primer TurtleBot4 -->
-    <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
-      <arg name="namespace" value="turtlebot1"/>
-      <arg name="use_sim_time" value="$(var use_sim_time)"/>
-      <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
-    </include>
+    <group if="$(eval &quot;'$(var navigation_backend)' == 'nav2'&quot;)">
+      <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
+        <arg name="namespace" value="turtlebot1"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
+      </include>
 
-    <!-- Nav2 del primer TurtleBot4 -->
-    <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
-      <arg name="namespace" value="turtlebot1"/>
-      <arg name="use_sim_time" value="$(var use_sim_time)"/>
-    </include>
+      <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
+        <arg name="namespace" value="turtlebot1"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      </include>
 
-    <!-- Localización con mapa del segundo TurtleBot4 -->
-    <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
-      <arg name="namespace" value="turtlebot2"/>
-      <arg name="use_sim_time" value="$(var use_sim_time)"/>
-      <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
-    </include>
+      <include file="$(find-pkg-share turtlebot4_navigation)/launch/localization.launch.py">
+        <arg name="namespace" value="turtlebot2"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="map" value="$(find-pkg-share my_world)/maps/my_world/plano_my_office.yaml"/>
+      </include>
 
-    <!-- Nav2 del segundo TurtleBot4 -->
-    <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
-      <arg name="namespace" value="turtlebot2"/>
-      <arg name="use_sim_time" value="$(var use_sim_time)"/>
-    </include>
+      <include file="$(find-pkg-share turtlebot4_navigation)/launch/nav2.launch.py">
+        <arg name="namespace" value="turtlebot2"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      </include>
+    </group>
+
+    <group if="$(eval &quot;'$(var navigation_backend)' == 'easynav'&quot;)">
+      <timer period="2.0">
+        <include file="$(find-pkg-share my_world)/launch/easynav_turtlebot4.launch.py">
+          <arg name="namespace" value="turtlebot1"/>
+          <arg name="use_sim_time" value="$(var use_sim_time)"/>
+          <arg name="params_file" value="$(find-pkg-share my_world)/config/easynav_turtlebot1.params.yaml"/>
+        </include>
+
+        <include file="$(find-pkg-share my_world)/launch/easynav_turtlebot4.launch.py">
+          <arg name="namespace" value="turtlebot2"/>
+          <arg name="use_sim_time" value="$(var use_sim_time)"/>
+          <arg name="params_file" value="$(find-pkg-share my_world)/config/easynav_turtlebot2.params.yaml"/>
+        </include>
+      </timer>
+    </group>
+
   </timer>
 </launch>

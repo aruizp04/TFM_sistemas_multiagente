@@ -19,12 +19,14 @@ install(
 install(
   PROGRAMS
     scripts/turtlebot4_description_world_sensors.py
+    scripts/scan_stamp_delay.py
   DESTINATION share/${PROJECT_NAME}/scripts
 )
 
 install(
   PROGRAMS
     scripts/turtlebot4_description_world_sensors.py
+    scripts/scan_stamp_delay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

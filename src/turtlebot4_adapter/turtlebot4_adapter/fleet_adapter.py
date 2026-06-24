@@ -72,6 +72,12 @@ def main(argv=sys.argv):
                         help='URI of the api server to transmit state and task information.')
     parser.add_argument('-sim', '--use_sim_time', action='store_true',
                         help='Use sim time, default: false')
+    parser.add_argument(
+        '--navigation_backend',
+        choices=['nav2', 'easynav'],
+        default=None,
+        help='Navigation backend to use. Overrides fleet_manager.navigation_backend'
+    )
     args = parser.parse_args(args_without_ros[1:])
     print('Starting fleet adapter...')
 
@@ -135,6 +141,9 @@ def main(argv=sys.argv):
 
     # Initialize robot API for this fleet
     fleet_mgr_yaml = config_yaml['fleet_manager']
+    if args.navigation_backend is not None:
+        fleet_mgr_yaml['navigation_backend'] = args.navigation_backend
+
     api = RobotAPI(
         fleet_mgr_yaml,
         use_sim_time=args.use_sim_time,
@@ -204,7 +213,18 @@ class RobotAdapter:
         execution = self.execution
         if execution:
             if self.api.is_command_completed():
-                execution.finished()
+                if self.api.last_command_failed():
+                    self.node.get_logger().warn(
+                        f'Navigation command failed for [{self.name}]. '
+                        'Requesting replanning...'
+                    )
+                    if (
+                        self.update_handle is not None and
+                        self.update_handle.more() is not None
+                    ):
+                        self.update_handle.more().replan()
+                else:
+                    execution.finished()
                 self.execution = None
             else:
                 activity_identifier = execution.identifier
@@ -248,18 +268,30 @@ class RobotAdapter:
                 self.update_handle.more().replan()
 
     def navigate(self, destination, execution):
-        self.execution = execution
         self.node.get_logger().info(
             f'Commanding [{self.name}] to navigate to {destination.position} '
             f'on map [{destination.map}]'
         )
 
-        self.api.navigate(
+        if not self.api.navigate(
             self.name,
             destination.position,
             destination.map,
             destination.speed_limit
-        )
+        ):
+            self.node.get_logger().warn(
+                f'Navigation command for [{self.name}] was rejected by the '
+                'robot API. Requesting replanning...'
+            )
+            self.execution = None
+            if (
+                self.update_handle is not None and
+                self.update_handle.more() is not None
+            ):
+                self.update_handle.more().replan()
+            return
+
+        self.execution = execution
 
     def stop(self, activity):
         execution = self.execution

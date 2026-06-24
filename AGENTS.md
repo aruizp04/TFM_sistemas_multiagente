@@ -57,6 +57,15 @@ changes applied for `nav2` must not alter `easynav` behavior. Prefer
 backend-gated launch blocks, backend-specific parameter files, and
 backend-specific remappings so fixes for one stack do not regress the other.
 
+## Runtime Trace Diagnostics
+
+When the user asks to check whether the project is working, always inspect
+`launch.txt`, `turtlebot1.txt`, and `turtlebot2.txt` before diagnosing launch,
+RMF, Gazebo, EasyNav, Nav2, TurtleBot, or task failures. Treat `launch.txt` as
+the main launch trace, and treat `turtlebot1.txt` and `turtlebot2.txt` as the
+adapter traces for each robot. Cross-check timestamps and task IDs across all
+three logs before concluding the cause.
+
 When a new ROS 2, RMF, Gazebo, TurtleBot4, navigation, TF, DDS, build, or launch
 error is identified while working in this repository, update
 `../ERRORES_Y_SOLUCIONES.md` automatically as part of the same task. Add a new

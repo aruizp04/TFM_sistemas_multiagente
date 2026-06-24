@@ -11,7 +11,9 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>easynav_support_py</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

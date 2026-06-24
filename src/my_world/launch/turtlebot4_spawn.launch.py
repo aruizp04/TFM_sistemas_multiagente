@@ -27,8 +27,8 @@ from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch.substitutions import NotEqualsSubstitution
 from launch.substitutions import PathJoinSubstitution
+from launch.substitutions import PythonExpression
 
 from launch_ros.actions import Node, PushRosNamespace
 
@@ -58,6 +58,15 @@ ARGUMENTS = [
     DeclareLaunchArgument('nav2', default_value='false',
                           choices=['true', 'false'],
                           description='Whether to launch Nav2'),
+    DeclareLaunchArgument(
+        'publish_tf_namespace_bridges',
+        default_value='true',
+        choices=['true', 'false'],
+        description='Publish compatibility TF bridges for namespaced robots'),
+    DeclareLaunchArgument(
+        'rplidar_tf_parent_frame',
+        default_value='rplidar_link',
+        description='Parent frame for the RPLIDAR static transform'),
 ]
 
 for pose_element in ['x', 'y', 'z', 'yaw']:
@@ -169,6 +178,13 @@ def generate_launch_description():
     z = LaunchConfiguration('z')
     yaw = LaunchConfiguration('yaw')
     turtlebot4_node_yaml_file = LaunchConfiguration('param_file')
+    publish_tf_namespace_bridges = LaunchConfiguration(
+        'publish_tf_namespace_bridges')
+    rplidar_tf_parent_frame = LaunchConfiguration('rplidar_tf_parent_frame')
+    publish_tf_namespace_bridges_condition = IfCondition(PythonExpression([
+        "'", namespace, "' != '' and '",
+        publish_tf_namespace_bridges, "' == 'true'"
+    ]))
 
     robot_name = LaunchConfiguration('robot_name')
     dock_name = LaunchConfiguration('dock_name')
@@ -294,7 +310,7 @@ def generate_launch_description():
                 ('/tf_static', 'tf_static')
             ],
             output='screen',
-            condition=IfCondition(NotEqualsSubstitution(namespace, ''))
+            condition=publish_tf_namespace_bridges_condition
         ),
 
         Node(
@@ -309,7 +325,7 @@ def generate_launch_description():
                 ('/tf_static', 'tf_static')
             ],
             output='screen',
-            condition=IfCondition(NotEqualsSubstitution(namespace, ''))
+            condition=publish_tf_namespace_bridges_condition
         ),
 
         Node(
@@ -408,7 +424,8 @@ def generate_launch_description():
             output='screen',
             arguments=[
                 '0', '0', '0', '0', '0', '0.0',
-                'rplidar_link', [robot_name, '/rplidar_link/rplidar']],
+                rplidar_tf_parent_frame,
+                [robot_name, '/rplidar_link/rplidar']],
             remappings=[
                 ('/tf', 'tf'),
                 ('/tf_static', 'tf_static'),
