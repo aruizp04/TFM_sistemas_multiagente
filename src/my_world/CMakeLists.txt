@@ -20,6 +20,7 @@ install(
   PROGRAMS
     scripts/turtlebot4_description_world_sensors.py
     scripts/scan_stamp_delay.py
+    scripts/nav2_map_to_easynav.py
   DESTINATION share/${PROJECT_NAME}/scripts
 )
 
@@ -27,6 +28,7 @@ install(
   PROGRAMS
     scripts/turtlebot4_description_world_sensors.py
     scripts/scan_stamp_delay.py
+    scripts/nav2_map_to_easynav.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
