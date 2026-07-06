@@ -30,17 +30,16 @@ El workspace principal es el `rmf_ws/` que haya creado cada usuario. Ejecuta los
     - `src/turtlebot4_adapter/turtlebot4_adapter/navigator/nav2.py`
     - `src/turtlebot4_adapter/turtlebot4_adapter/navigator/easynav.py`
 
-### Paquetes externos usados por el launch
+### Carpetas externas no versionadas
 
-- `rmf_demos`: arranque comun de RMF, schedule, dispatcher y RViz.
-- `rmf_demos_gz`: simulacion Gazebo para mundos RMF.
-- `rmf_demos_fleet_adapter`: adapter de demostracion `tinyRobot`, lanzado junto al mundo.
-- `rmf_demos_tasks`: envio de tareas RMF de prueba.
-- `turtlebot4_gz_bringup`: nodos y bridges del TurtleBot4 simulado.
-- `turtlebot4_navigation`: localizacion y Nav2 para TurtleBot4.
-- `irobot_create_*`: descripcion, control y nodos Create3.
-- `ros_gz_sim` y `ros_gz_bridge`: Gazebo y bridges ROS/Gazebo.
-- `easynav_system`, `easynav_goalmanager_py` y `easynav_support_py`: backend EasyNav.
+El repositorio solo versiona los paquetes propios modificados. Para que la simulacion funcione, el workspace debe tener disponibles tambien estas carpetas externas dentro de `src/`, aunque no esten guardadas en Git:
+
+- `src/demonstrations/`: demos de RMF usadas por el launch principal, el mundo Gazebo, el adapter `tinyRobot` y los comandos de tareas.
+- `src/rmf/`: paquetes base de Open-RMF, incluyendo mensajes, trafico, tareas, adapters y herramientas de mapas.
+- `src/thirdparty/`: dependencias vendor usadas por RMF.
+- `src/turtlebot4_simulator/`: paquetes de simulacion TurtleBot4 en Gazebo.
+
+Estas carpetas deben obtenerse aparte al preparar el workspace de Open-RMF/TurtleBot4. Dependiendo del metodo de instalacion, pueden venir de clonar los repositorios fuente en `src/` o de instalar paquetes binarios de ROS 2 que proporcionen los mismos paquetes. En cualquier caso, antes de compilar este workspace deben estar disponibles para que `colcon` y `ros2 launch` encuentren los paquetes externos que usan `my_world` y `turtlebot4_adapter`.
 
 ## Preparar entorno
 
