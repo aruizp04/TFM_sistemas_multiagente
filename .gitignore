@@ -1,0 +1,12 @@
+build/
+install/
+log/
+
+src/demonstrations/
+src/rmf/
+src/thirdparty/
+src/turtlebot4_simulator/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
